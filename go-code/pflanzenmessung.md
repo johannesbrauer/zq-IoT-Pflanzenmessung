@@ -1,7 +1,8 @@
 # Pflanzenmessung: code documentation
 
 This program runs on a XIAO ESP32-C3 with TinyGo. It reads a BME280 sensor and
-a soil moisture sensor and serves the values as JSON at `/api/readings`.
+a soil moisture sensor and serves the values as JSON at `/api/readings` plus a
+live dashboard at `/`.
 
 It uses `httphi`, a small HTTP server for microcontrollers, instead of Go's
 `net/http`. The API and HTTP parts are explained in detail in section 5.
@@ -20,10 +21,11 @@ tinygo flash -target=xiao-esp32c3 -monitor .
 After the WiFi connection, the monitor prints the URL every 5 seconds:
 
 ```text
-Open: http://192.168.1.123:8080/api/readings
+Open: http://192.168.1.123:8080/  (API: /api/readings)
 ```
 
-Open that URL in a browser, or use:
+Open `http://192.168.1.123:8080/` in a browser to see the dashboard. It updates
+automatically every 3 seconds. The raw JSON is still available at:
 
 ```bash
 curl http://192.168.1.123:8080/api/readings
@@ -40,7 +42,7 @@ board in your router's client list. If the monitor is closed, reopen it with
 1. Waits 2 seconds so the serial monitor can connect.
 2. Stores WiFi settings, calibration values, sensor flags, and fallbacks.
 3. Sets up I2C for the BME280 and the ADC for the soil sensor.
-4. Registers the `/api/readings` route.
+4. Registers the `/api/readings` route and the `/` dashboard route.
 5. Configures the `httphi` router and allocates its fixed buffers.
 6. Connects to WiFi and waits for a real IP address.
 7. Starts a background loop that prints the URL.
@@ -138,11 +140,13 @@ The route is registered with:
 ```go
 var routes httphi.MuxSlice
 routes.Handle("/api/readings", handler)
+routes.Handle("/{$}", serveWebUI)
 ```
 
-This only fills the route table. It does not start a server. The handler is a
-closure, so it can use `bme`, `soil`, the flags, the calibration values, and the
-fallbacks from `main`.
+This only fills the route table. It does not start a server. The first handler
+is a closure, so it can use `bme`, `soil`, the flags, the calibration values,
+and the fallbacks from `main`. The second route matches only the exact root
+path; the dashboard itself lives in `webui.go`.
 
 The router is configured with:
 
@@ -273,11 +277,12 @@ The worker calls `httphi.Handle(exch, mux, nil)`. That function:
 - A route with a method only matches that method.
 - `MethUndefined` matches every method. Our route has no method prefix.
 - `/api/readings` has no wildcards, so the path check is a direct comparison.
+- `/{$}` matches the exact root path `/` and nothing else.
 - If several routes match, the most specific one wins.
 - If no route matches, the handler is `nil`.
 
-There is no default route. `GET /` returns 404 because only `/api/readings` is
-registered. A 404 is a complete response, not a timeout.
+`GET /` serves the dashboard. Unknown paths still return 404, which is a
+complete response, not a timeout.
 
 The handler receives the `*Exchange`. The exchange is only valid during the
 handler call. Do not save the pointer or any slice that points into its buffers
@@ -443,6 +448,22 @@ The `httphi` version:
 
 If the WiFi signal is weak, requests can still fail at the network level. The
 server itself no longer grows the heap for every request.
+
+### 6.8 The web dashboard
+
+`webui.go` holds the dashboard as one `const webUIHTML` string: HTML, CSS, and
+JavaScript are inline, so the page needs no internet access or external files.
+`serveWebUI` sends it with:
+
+```go
+ex.RespondString(httphi.StatusOK, "text/html; charset=utf-8", webUIHTML)
+```
+
+`RespondString` writes the constant directly and does not allocate a copy. In
+the browser, a small script fetches `/api/readings` every 3 seconds and updates
+the four cards. It stops polling while the tab is hidden and refreshes again
+when the tab becomes visible. No extra server route, worker, or buffer is
+needed for the updates.
 
 ---
 

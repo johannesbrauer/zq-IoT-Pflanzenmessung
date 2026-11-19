@@ -100,6 +100,8 @@ func main() {
 		b = append(b, '}')
 		exch.Respond(httphi.StatusOK, "application/json", b)
 	})
+	// Serve the web UI (webui.go) for any other path.
+	routes.Handle("/{$}", serveWebUI)
 
 	var router httphi.Router
 	cfg := httphi.DefaultRouterConfig(1, 2048, routes.MaxPathValues())
@@ -128,7 +130,7 @@ func main() {
 	// Print the URL every 5 s; this loop also keeps the program alive.
 	go func() {
 		for {
-			println("Open: http://" + ip.String() + ":8080/api/readings")
+			println("Open: http://" + ip.String() + ":8080/  (API: /api/readings)")
 			time.Sleep(5 * time.Second)
 		}
 	}()
