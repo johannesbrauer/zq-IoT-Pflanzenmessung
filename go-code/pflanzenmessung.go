@@ -15,6 +15,13 @@ import (
 	link "tinygo.org/x/espradio/netlink"
 )
 
+// GPIO pins: change these if you rewire the board.
+const (
+	sdaPin  = machine.D1
+	sclPin  = machine.D0 
+	soilPin = machine.D3
+)
+
 func main() {
 	// Give the serial monitor time to connect before printing.
 	time.Sleep(2 * time.Second)
@@ -38,16 +45,16 @@ func main() {
 	fallbackPres := -1013.0 // hPa
 	fallbackRaw := -35000   // soil ADC value (0-65535)
 
-	// BME280 on I2C: SDA=D1, SCL=D0.
+	// BME280 on I2C (pins set above).
 	i2c := machine.I2C0
-	i2c.Configure(machine.I2CConfig{SDA: machine.D1, SCL: machine.D0})
+	i2c.Configure(machine.I2CConfig{SDA: sdaPin, SCL: sclPin})
 
 	bme := bme280.New(i2c)
 	bme.Configure()
 
-	// Soil sensor on D3 (analog).
+	// Soil sensor (analog).
 	machine.InitADC()
-	soil := machine.ADC{Pin: machine.D3}
+	soil := machine.ADC{Pin: soilPin}
 	soil.Configure(machine.ADCConfig{})
 
 	// HTTP route. httphi builds the response without net/http allocations.
