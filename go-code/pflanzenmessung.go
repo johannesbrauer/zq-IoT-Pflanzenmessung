@@ -51,7 +51,6 @@ func main() {
 	soil.Configure(machine.ADCConfig{})
 
 	// HTTP route. httphi builds the response without net/http allocations.
-	//TODO: Read httphi docu
 	var routes httphi.MuxSlice
 	routes.Handle("/api/readings", func(exch *httphi.Exchange) {
 		// Use real sensors when enabled and working, otherwise the fallbacks.
