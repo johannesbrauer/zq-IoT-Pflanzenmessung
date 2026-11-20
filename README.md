@@ -6,7 +6,11 @@ Plant monitor REST API on a Seeed XIAO ESP32-C3, built with TinyGo 0.44
 code is `pflanzenmessung.go` next to this file; flash with
 `tinygo flash -target=xiao-esp32c3 -monitor .`.
 
-# [Go Docu](https://go.dev/doc/)
+### [Go Docu](https://go.dev/doc/)
+
+### [TinyGo Docu](https://tinygo.org/docs/reference/)
+
+![Plant monitoring system](.images/plant_monitoring_system.svg)
 
 ## 1. Libraries (pinned in go.mod) and their documentation
 
