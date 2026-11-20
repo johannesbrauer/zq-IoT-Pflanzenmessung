@@ -277,5 +277,7 @@ h1 { margin: 0; font-size: clamp(1.55rem, 3vw, 2.05rem); letter-spacing: -.025em
 `
 
 func serveWebUI(ex *httphi.Exchange) {
-	ex.RespondString(httphi.StatusOK, "text/html; charset=utf-8", webUIHTML)
+	if err := ex.RespondString(httphi.StatusOK, "text/html; charset=utf-8", webUIHTML); err != nil {
+		println("serveWebUI:", err.Error())
+	}
 }

@@ -4,16 +4,26 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"machine"
+	"net"
+	"net/netip"
 	"strconv"
 	"time"
 
+	"github.com/soypat/lneto"
 	"github.com/soypat/lneto/http/httphi"
+	"github.com/soypat/lneto/x/xnet"
 	"tinygo.org/x/drivers/bme280"
 	"tinygo.org/x/drivers/netdev"
 	nl "tinygo.org/x/drivers/netlink"
 	link "tinygo.org/x/espradio/netlink"
 )
+
+// httpConnDeadline fails a peer that opens a connection and then stalls,
+// instead of it holding a router worker forever.
+const httpConnDeadline = 10 * time.Second
 
 func main() {
 	// Give the serial monitor time to connect before printing.
@@ -104,7 +114,7 @@ func main() {
 	routes.Handle("/{$}", serveWebUI)
 
 	var router httphi.Router
-	cfg := httphi.DefaultRouterConfig(1, 2048, routes.MaxPathValues())
+	cfg := httphi.DefaultRouterConfig(4, 2048, routes.MaxPathValues())
 	if err := router.Configure(&routes, cfg); err != nil {
 		println("router config failed:", err.Error())
 		return
@@ -136,6 +146,50 @@ func main() {
 	}()
 
 	// Serve until the listener fails, then report the error.
-	err := radio.ListenAndServe(&router, 8080)
+	err := listenAndServe(&radio, &router, 8080)
 	println("HTTP server stopped:", err.Error())
 }
+
+// listenAndServe is Esplink.ListenAndServe with a per-connection deadline.
+// Without it an idle peer holds a router worker forever, so the browser's
+// page or /api/readings request is never served.
+func listenAndServe(radio *link.Esplink, router *httphi.Router, port uint16) error {
+	stack := radio.StackAsync().StackGo(pollBackoff, xnet.StackGoConfig{
+		ListenerPoolConfig: xnet.TCPPoolConfig{
+			PoolSize:           4,
+			QueueSize:          4,
+			TxBufSize:          len(webUIHTML) + 128,
+			RxBufSize:          1024,
+			EstablishedTimeout: 5 * time.Second,
+			ClosingTimeout:     5 * time.Second,
+			NewBackoff:         func() lneto.BackoffStrategy { return pollBackoff },
+		},
+	})
+	laddr := netip.AddrPortFrom(netip.Addr{}, port)
+	sock, err := stack.SocketNetip(context.Background(), "tcp4", xnet.AF_INET, xnet.SOCK_STREAM, laddr, netip.AddrPort{})
+	if err != nil {
+		return err
+	}
+	listener, ok := sock.(net.Listener)
+	if !ok {
+		return errors.New("stack returned non-listener socket")
+	}
+	defer listener.Close()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return err
+		}
+		conn.SetDeadline(time.Now().Add(httpConnDeadline))
+		err = router.Handle(conn)
+		if err != nil {
+			conn.Close()
+			if err == net.ErrClosed {
+				return err
+			}
+			println("HTTP router dropped connection:", err.Error())
+		}
+	}
+}
+
+func pollBackoff(uint) time.Duration { return 5 * time.Millisecond }
